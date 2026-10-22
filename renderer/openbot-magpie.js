@@ -10,7 +10,8 @@
     message: '',
     messageState: 'idle',
     unsupported: false,
-    transientSecret: ''
+    transientSecret: '',
+    unsubscribeChanges: null
   };
   var els = {};
 
@@ -283,8 +284,65 @@
       ? tr('打开此页时读取本机插件状态；不会自动启用插件。', 'Local plugin status is read when this page opens. The plugin is never enabled automatically.')
       : tr('此功能需要 OpenBot 桌面版。', 'This feature requires the OpenBot desktop app.'), apiMethod('magpieStatus') ? 'idle' : 'error');
     updateControls();
+    subscribeStatusChanges();
     watchVisibility();
     return true;
+  }
+
+  function subscribeStatusChanges() {
+    var subscribe = apiMethod('onMagpieChanged');
+    if (!subscribe || state.unsubscribeChanges) return;
+    try {
+      var unsubscribe = subscribe.call(root.grokbot, handleStatusChanged);
+      if (typeof unsubscribe === 'function') {
+        state.unsubscribeChanges = unsubscribe;
+        if (typeof root.addEventListener === 'function') root.addEventListener('pagehide', unsubscribeStatusChanges, { once: true });
+      }
+    } catch (_) { state.unsubscribeChanges = null; }
+  }
+
+  function unsubscribeStatusChanges() {
+    if (typeof state.unsubscribeChanges === 'function') {
+      try { state.unsubscribeChanges(); } catch (_) { }
+    }
+    state.unsubscribeChanges = null;
+  }
+
+  function handleStatusChanged(payload) {
+    if (!state.initialized) return;
+    if (document.getElementById('magpie-status') !== els.status) {
+      unsubscribeStatusChanges();
+      return;
+    }
+    if (!payload || payload.ok !== true || !payload.status || typeof payload.status !== 'object') return;
+
+    var gatewayDraft = els.gateway.value;
+    var gatewayWasEdited = gatewayDraft !== state.baselineGateway;
+    var apiKeyDraft = els.apiKey.value;
+    var wasBusy = state.busy;
+    var previousMessage = state.message;
+    var previousMessageState = state.messageState;
+    var status = payload.status;
+
+    renderStatus(status);
+
+    // Status events can arrive while the user is editing the form. Keep a
+    // dirty gateway draft (including an intentionally cleared field) while
+    // advancing the baseline to the new saved value.
+    if (gatewayWasEdited) {
+      els.gateway.value = gatewayDraft;
+      if (typeof status.gatewayUrl === 'string') state.baselineGateway = status.gatewayUrl;
+    }
+    // The API key is never returned by status, so keep any unsaved input too.
+    els.apiKey.value = apiKeyDraft;
+
+    // A change notification updates status and controls, but should not hide
+    // an in-flight action or a user-visible error. New status failures remain
+    // authoritative and are shown by renderStatus.
+    if (wasBusy || (previousMessageState === 'error' && !state.unsupported && status.state !== 'failed')) {
+      message(previousMessage, previousMessageState);
+    }
+    updateControls();
   }
 
   function watchVisibility() {

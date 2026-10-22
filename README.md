@@ -132,3 +132,7 @@ The host checks `assertOpen` before dispatch and passes it into the shared manag
 真实 SDK 的异步导入结束后、创建运行目录或启动 DSH 子进程之前，再次检查宿主授权。若导入期间操作被取消或权限撤销，启动会失败，不创建运行资料或启动插件。既有队列、持久化及控制请求前的授权复核保持不变。
 
 Version 0.2.1 rechecks host authority after asynchronous SDK import, before runtime files or child startup. Revocation during import fails startup without creating runtime state or launching the plugin. The existing queue, persistence and control-request checks remain in place.
+
+### 0.2.1 宿主实时状态通知
+
+宿主在成功处理上述操作后，将同一份已脱敏的 `{ok:true,status}` 结果广播为 `magpie:changed`，preload提供 `onMagpieChanged(callback)`（返回取消订阅函数）。设置组件会更新服务状态和按钮，同时保留未保存的网关/密钥草稿；Agent修改后无需人手动刷新。广播只发给可信拥有者窗口，不暴露密钥，也不成为新的模型可调用IPC。
