@@ -32,3 +32,22 @@ test('invalid gateway and changed installed bundle fail without a running servic
  const rt=require('../src/bundle-fingerprint');m.data.installed.bundleSha256=rt.fingerprintBundle(m.data.installed.bundlePath).sha256;
  await assert.rejects(m.enable(),{code:'MAGPIE_UNSUPPORTED'});assert.equal(m.status().status.installed.verifiedOriginal,false);
 });
+
+test('authority revoked while real SDK import yields prevents runtime writes and child startup', async t => {
+ const home=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'magpie-import-revoked-')));
+ let armed=false,revoked=false;
+ const manager=new MagpieManager({home,config:new Config(home),assertOpen(){
+  if(revoked)throw Object.assign(new Error('Authority revoked during SDK import'),{code:'REVOKED'});
+  // Queue execution is authorized; revoke in the next microtask, while the
+  // actual dynamic SDK import yields. No SDK/process mock is involved.
+  if(armed){armed=false;queueMicrotask(()=>{revoked=true;});}
+ }});
+ t.after(async()=>{await manager.close();removeOwned(home);fs.rmSync(home,{recursive:true,force:true});});
+ await manager.install({sourcePath:archive});
+ armed=true;
+ await assert.rejects(manager.enable(),{code:'REVOKED'});
+ assert.equal(revoked,true);
+ assert.equal(fs.existsSync(path.join(home,'dsh-apps/runtime')),false,'revoked startup must not create a runtime profile');
+ assert.equal(manager.run,null,'revoked startup must not adopt or initialize a child client');
+ assert.equal(manager.status().status.enabled,false);
+});

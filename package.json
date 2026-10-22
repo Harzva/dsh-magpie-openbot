@@ -1,6 +1,6 @@
 {
   "name": "@harzva/dsh-magpie-openbot",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "OpenBot desktop host adapter for the unmodified dsh-x-magpie DSH plugin",
   "license": "MIT",

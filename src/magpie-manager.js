@@ -37,6 +37,8 @@ class MagpieManager {
   const fingerprint=rt.fingerprintBundle(i.bundlePath,{version:i.version});if(fingerprint.sha256!==i.bundleSha256)fail('MAGPIE_CHANGED','已安装插件文件发生变化，请重新安装。');
   if(fingerprint.sha256!==VERIFIED_BUNDLE)fail('MAGPIE_UNSUPPORTED','此插件内容与已验证的原版不符；已保存但不会执行。');
   const sdkLocation=resolveDshRuntimeModule(require.resolve('@deepseek-ai/dsh-sdk-client'));const {HarnessClient}=await import(sdkLocation);
+  // SDK import yields: authority may have been revoked before startup effects.
+  this.ready();
   const temp=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'ob-magpie-')));fs.chmodSync(temp,0o700);
   let adopted=false;
   try {

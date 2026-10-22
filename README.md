@@ -34,7 +34,7 @@ npm test
 
 ## 接入自己的桌面宿主
 
-版本 **0.2.0** 从包根导出 `createMagpieHost`、`MagpieManager`、`installLocalDshBundle`。集成人与 Agent 的统一入口使用一个 host 实例：
+版本 **0.2.1** 从包根导出 `createMagpieHost`、`MagpieManager`、`installLocalDshBundle`。集成人与 Agent 的统一入口使用一个 host 实例：
 
 ```js
 const { createMagpieHost } = require('@harzva/dsh-magpie-openbot');
@@ -115,7 +115,7 @@ This repository is the MIT-licensed **OpenBot desktop host adapter** for the unm
 
 Run `npm ci --ignore-scripts && npm test` on Node.js 22.12+ and macOS/Linux. The tests run the original plugin and real DSH services against a controlled local gateway, without accessing personal logins or paid providers. There is no private OpenBot package dependency. The renderer is host integration source, not a standalone web app. The Agent patch requires OpenBot's existing authorization/settings service. Upstream authorship and MIT notices are retained.
 
-### Public host API 0.2.0
+### Public host API 0.2.1
 
 The package root exports `createMagpieHost`, `MagpieManager`, and `installLocalDshBundle`. Create one host with `{home, config, assertOpen}` for approved human and Agent callers. `invoke` accepts only `status`, `install`, `configure`, `enable`, `disable`, `sync`, and `useModel`. Installation accepts no arguments other than an empty object: it resolves the bundled original 0.7.2 archive internally and verifies its SHA256. No caller-controlled path, kind, code, or arbitrary IPC is accepted. `configure` requires at least one of `gatewayUrl` and `apiKey`; `useModel` requires `modelId`. Other operations accept omitted input or `{}`. Extra fields and accessors are rejected.
 
@@ -126,3 +126,9 @@ The host checks `assertOpen` before dispatch and passes it into the shared manag
 `await host.importSelectedBundle(sourcePath)` 仅供可信桌面宿主接收用户通过操作系统文件选择器选择的绝对 `.tgz` 或文件夹路径。调用前由宿主核验拥有者身份与选择来源；此方法检查 `assertOpen` 并委托同一个 manager，不创建第二份状态。不要把它暴露为模型工具，也不要把模型提供的路径传给它。`invoke('importSelectedBundle', ...)` 始终拒绝；模型入口 `invoke('install')` 仍只装内置固定原版，不能接收路径或 kind。取消文件选择时可用 `await host.invoke('status')` 获取脱敏状态。
 
 `host.importSelectedBundle(sourcePath)` is a separate trusted desktop UI method for absolute paths returned by the OS file picker after owner authorization. It shares the same manager and checks `assertOpen`. Never expose it to models or forward model-supplied paths. It is deliberately absent from `invoke`; model-facing installation remains pinned to the bundled archive.
+
+### 0.2.1 — SDK 导入后的授权复核
+
+真实 SDK 的异步导入结束后、创建运行目录或启动 DSH 子进程之前，再次检查宿主授权。若导入期间操作被取消或权限撤销，启动会失败，不创建运行资料或启动插件。既有队列、持久化及控制请求前的授权复核保持不变。
+
+Version 0.2.1 rechecks host authority after asynchronous SDK import, before runtime files or child startup. Revocation during import fails startup without creating runtime state or launching the plugin. The existing queue, persistence and control-request checks remain in place.
