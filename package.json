@@ -1,10 +1,10 @@
 {
   "name": "@harzva/dsh-magpie-openbot",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "OpenBot desktop host adapter for the unmodified dsh-x-magpie DSH plugin",
   "license": "MIT",
-  "main": "src/magpie-manager.js",
+  "main": "index.js",
   "engines": {
     "node": ">=22.12"
   },
@@ -14,5 +14,19 @@
   "dependencies": {
     "@deepseek-ai/dsh": "0.2.1-rc.2",
     "@deepseek-ai/dsh-sdk-client": "0.2.1-rc.2"
-  }
+  },
+  "exports": {
+    ".": "./index.js"
+  },
+  "files": [
+    "index.js",
+    "src/",
+    "vendor/",
+    "renderer/",
+    "patches/",
+    "docs/",
+    "PROVENANCE.json",
+    "README.md",
+    "LICENSE"
+  ]
 }

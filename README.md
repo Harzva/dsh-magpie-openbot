@@ -34,9 +34,11 @@ npm test
 
 ## 接入自己的桌面宿主
 
+版本 **0.2.0** 从包根导出 `createMagpieHost`、`MagpieManager`、`installLocalDshBundle`。集成人与 Agent 的统一入口使用一个 host 实例：
+
 ```js
-const { MagpieManager } = require('./src/magpie-manager');
-const manager = new MagpieManager({
+const { createMagpieHost } = require('@harzva/dsh-magpie-openbot');
+const host = createMagpieHost({
   home: '/absolute/private/application-data',
   config: hostModelConnections,
   assertOpen() {
@@ -44,23 +46,22 @@ const manager = new MagpieManager({
     hostAssertCurrentSettingsAuthority();
   }
 });
+await host.invoke('install'); // 只装本包内部定位并校验 SHA256 的原版 0.7.2
+await host.invoke('configure', { gatewayUrl: 'http://127.0.0.1:3425', apiKey: 'USER_SUPPLIED_GATEWAY_KEY' });
+await host.invoke('enable');
+await host.invoke('sync');
+const status = await host.invoke('status');
+// 从 status.status.models 选择精确 ID：
+// await host.invoke('useModel', { modelId: 'provider/model' });
+await host.invoke('disable');
+await host.close();
 ```
 
-`home` 使用宿主自己的专用资料目录。`config.upsertProfile({id,name,baseUrl,apiKey,model})` 必须保存命名连接并返回 `{ok:true}` 或 `{ok:false,code,message}`；连接ID由manager生成。真实凭据只交给本机存储，不返回到renderer/Agent。
+`invoke(operation,input)` 只接受 `status/install/configure/enable/disable/sync/useModel`。无参数操作的 input 只能省略或为 `{}`；`configure` 只接受 `gatewayUrl? / apiKey?` 且至少一项；`useModel` 只接受非空 `modelId`。未知操作、额外字段、数组和访问器均拒绝。`install` 不接受路径、kind 或代码，由宿主内部相对 `src/host.js` 定位固定发布包并检查原始归档摘要。该入口没有任意 IPC 转发。
 
-宿主在人或 Agent 调用前完成身份及批准校验，再调用：
+`home` 使用宿主自己的专用资料目录。`config.upsertProfile({id,name,baseUrl,apiKey,model})` 必须保存命名连接并返回 `{ok:true}` 或 `{ok:false,code,message}`；连接ID由manager生成。真实凭据只交给本机存储，不返回到renderer/Agent。`isBusy()` 与 `close()` 委托同一个 manager；重启不会自动启用。宿主在人或 Agent 调用前完成身份及批准校验，`assertOpen` 在分派和 manager 队列执行时再次检查；`close()` 用于退出清理，不依赖仍然有效的调用授权。
 
-```js
-await manager.install({sourcePath: require('node:path').resolve('vendor/dsh-x-magpie-0.7.2.tgz')});
-await manager.configure({gatewayUrl:'http://127.0.0.1:3425', apiKey:'USER_SUPPLIED_GATEWAY_KEY'});
-await manager.enable();
-await manager.sync();
-const status = await manager.refresh();
-// 从status.status.models选择精确ID，再执行：
-// await manager.useModel({modelId:'provider/model'});
-await manager.disable();
-await manager.close();
-```
+低层 `MagpieManager` 和 `installLocalDshBundle` 为可信宿主保留兼容性，允许本地路径；不要直接暴露给模型。它们不代表 `createMagpieHost.invoke('install')` 可接受路径。
 
 先在 Magpie 中登录或添加供应商并启动其网关。默认网关密钥是 `magpie`；自定义密钥由用户提供。修改网关配置前先停用同步。关闭同步只停止本适配的服务，已创建模型连接仍直接访问 Magpie。宿主重启后不自动启用。
 
@@ -73,7 +74,7 @@ await manager.close();
 | preload方法 | IPC意图 | manager方法 |
 | --- | --- | --- |
 | `magpieStatus` | `magpie:status` | `refresh()` |
-| `magpieInstall` | `magpie:install` | `install({sourcePath})`，路径由宿主内置包或用户文件选择器确定 |
+| `magpieInstall` | `magpie:install` | `host.invoke('install')`，只允许内置固定原版 |
 | `magpieConfigure` | `magpie:configure` | `configure(input)` |
 | `magpieEnable/Disable` | `magpie:enable/disable` | `enable()/disable()` |
 | `magpieSync` | `magpie:sync` | `sync()` |
@@ -113,3 +114,9 @@ await manager.close();
 This repository is the MIT-licensed **OpenBot desktop host adapter** for the unmodified upstream DSH Magpie plugin. Magpie manages supported accounts and routing; the upstream plugin synchronizes its model catalog; the adapter supplies desktop service transport and host settings integration.
 
 Run `npm ci --ignore-scripts && npm test` on Node.js 22.12+ and macOS/Linux. The tests run the original plugin and real DSH services against a controlled local gateway, without accessing personal logins or paid providers. There is no private OpenBot package dependency. The renderer is host integration source, not a standalone web app. The Agent patch requires OpenBot's existing authorization/settings service. Upstream authorship and MIT notices are retained.
+
+### Public host API 0.2.0
+
+The package root exports `createMagpieHost`, `MagpieManager`, and `installLocalDshBundle`. Create one host with `{home, config, assertOpen}` for approved human and Agent callers. `invoke` accepts only `status`, `install`, `configure`, `enable`, `disable`, `sync`, and `useModel`. Installation accepts no arguments other than an empty object: it resolves the bundled original 0.7.2 archive internally and verifies its SHA256. No caller-controlled path, kind, code, or arbitrary IPC is accepted. `configure` requires at least one of `gatewayUrl` and `apiKey`; `useModel` requires `modelId`. Other operations accept omitted input or `{}`. Extra fields and accessors are rejected.
+
+The host checks `assertOpen` before dispatch and passes it into the shared manager for queued checks. The embedding app owns identity, approval and audit policy. `isBusy()` and `close()` delegate to that same manager; closing remains available for cleanup after authority revocation. Low-level manager/installer exports remain for trusted host use and must not be exposed directly to model-generated input. The MIT adapter and unchanged upstream plugin provenance remain separate.
