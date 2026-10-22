@@ -16,7 +16,7 @@ function setup(t, assertOpen) {
 test('public exports and rejected dispatch never create settings or import arbitrary code', async t => {
   assert.equal(typeof MagpieManager, 'function'); assert.equal(typeof installLocalDshBundle, 'function');
   const { home, host } = setup(t);
-  const cases = [['constructor', {}], ['install', {sourcePath:'/tmp/evil'}], ['install',{kind:'bundled'}], ['install',{code:'evil'}], ['status',[]], ['enable',null], ['sync',{ extra:true }], ['configure',{}], ['configure',{apiKey:undefined}], ['configure',{apiKey:'bad\nkey'}], ['configure',{gatewayUrl:''}], ['useModel',{modelId:''}], ['useModel',{modelId:'a', extra:1}]];
+  const cases = [['importSelectedBundle', {}], ['constructor', {}], ['install', {sourcePath:'/tmp/evil'}], ['install',{kind:'bundled'}], ['install',{code:'evil'}], ['status',[]], ['enable',null], ['sync',{ extra:true }], ['configure',{}], ['configure',{apiKey:undefined}], ['configure',{apiKey:'bad\nkey'}], ['configure',{gatewayUrl:''}], ['useModel',{modelId:''}], ['useModel',{modelId:'a', extra:1}]];
   const accessor = {}; Object.defineProperty(accessor, 'apiKey', {get(){ throw Error('getter executed'); }}); cases.push(['configure',accessor]);
   for (const [operation,input] of cases) await assert.rejects(host.invoke(operation,input),{code:'MAGPIE_INVALID'});
   assert.equal(fs.existsSync(path.join(home,'dsh-apps')),false); assert.equal(host.isBusy(),false);
@@ -43,4 +43,17 @@ test('fixed original bundle, real services, shared host state and model config s
   await host.invoke('disable'); assert.equal((await host.invoke('status')).status.enabled,false);
   await host.close(); await assert.rejects(host.invoke('status'),{code:'MAGPIE_CLOSED'});
   const reopened=createMagpieHost({home,config}); try { const status=await reopened.invoke('status'); assert.equal(status.status.enabled,false); assert.equal(status.status.installed.version,'0.7.2'); assert.equal(status.status.hasKey,true); } finally {await reopened.close();}
+});
+
+test('trusted file-picker import shares the existing host manager while invoke stays finite', async t => {
+  let allowed=true;
+  const {home,host}=setup(t,()=>{if(!allowed)throw Object.assign(Error('revoked'),{code:'REVOKED'});});
+  for(const value of [undefined,null,{},'relative.tgz','/tmp/invalid\0.tgz']) await assert.rejects(host.importSelectedBundle(value),{code:'MAGPIE_INVALID'});
+  assert.equal(fs.existsSync(path.join(home,'dsh-apps')),false);
+  await assert.rejects(host.invoke('importSelectedBundle',{sourcePath:path.resolve(__dirname,'../vendor/dsh-x-magpie-0.7.2.tgz')}),{code:'MAGPIE_INVALID'});
+  const archive=path.resolve(__dirname,'../vendor/dsh-x-magpie-0.7.2.tgz');
+  const installed=await host.importSelectedBundle(archive); assert.equal(installed.status.installed.verifiedOriginal,true);
+  await host.invoke('configure',{apiKey:'SHARED_PICKER_KEY'});
+  const state=await host.invoke('status'); assert.equal(state.status.installed.sourceSha256,installed.status.installed.sourceSha256); assert.equal(state.status.hasKey,true); assert.ok(!JSON.stringify(state).includes('SHARED_PICKER_KEY'));
+  allowed=false; await assert.rejects(host.importSelectedBundle(archive),{code:'REVOKED'});
 });

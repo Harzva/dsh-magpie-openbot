@@ -50,6 +50,13 @@ function createMagpieHost({ home, config, assertOpen = () => {} } = {}) {
         default: invalid();
       }
     },
+    // Trusted desktop UI only: pass an OS file-picker result after owner checks.
+    // Deliberately absent from invoke's finite model-facing operation set.
+    async importSelectedBundle(sourcePath) {
+      assertOpen();
+      if (typeof sourcePath !== 'string' || !path.isAbsolute(sourcePath) || sourcePath.includes('\0')) invalid();
+      return manager.install({ sourcePath });
+    },
     isBusy: () => manager.isBusy(),
     close: () => manager.close()
   });
