@@ -1,0 +1,158 @@
+#set-panel-apps #magpie-interconnect-section{
+  display:flex;
+  grid-column:1/-1;
+  flex-direction:column;
+  min-width:0;
+  min-height:0;
+  padding:14px;
+  border:1px solid var(--settings-line,var(--border-soft));
+  border-radius:9px;
+  background:var(--settings-control,var(--mac-control));
+  color:var(--text);
+}
+#set-panel-apps #magpie-root{min-width:0}
+#set-panel-apps .magpie-header{
+  display:flex;
+  align-items:flex-start;
+  gap:8px;
+  min-width:0;
+  margin:0 0 7px;
+}
+#set-panel-apps .magpie-header>.app-connection-icon{flex:0 0 30px}
+#set-panel-apps .magpie-header>.app-connection-icon svg{width:18px;height:18px}
+#set-panel-apps .magpie-heading{flex:1;min-width:0}
+#set-panel-apps .magpie-title-row,
+#set-panel-apps .magpie-status-wrap,
+#set-panel-apps .magpie-model-heading{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  min-width:0;
+}
+#set-panel-apps .magpie-title-row h3{
+  min-width:0;
+  margin:0;
+  color:var(--text);
+  font-size:13.5px;
+  font-weight:600;
+  line-height:1.35;
+}
+#set-panel-apps .magpie-status-wrap{flex:0 0 auto}
+#set-panel-apps .magpie-status-wrap .btn,
+#set-panel-apps .magpie-actions .btn,
+#set-panel-apps .magpie-config>.btn,
+#set-panel-apps .magpie-model-fields>.btn{
+  min-height:28px;
+  padding:4px 9px;
+  font-size:11.5px;
+}
+#set-panel-apps .magpie-message{
+  min-height:18px;
+  margin:7px 0 9px;
+  color:var(--settings-muted,var(--text-3));
+  font-size:12px;
+  line-height:1.5;
+  overflow-wrap:anywhere;
+}
+#set-panel-apps .magpie-message[data-state="ok"]{color:var(--ok)}
+#set-panel-apps .magpie-message[data-state="error"]{color:var(--danger)}
+#set-panel-apps .magpie-message[data-state="pending"]{color:var(--text-2)}
+#set-panel-apps .magpie-installed{
+  margin:0 0 10px;
+  color:var(--text-2);
+  font-size:11.5px;
+  line-height:1.45;
+  overflow-wrap:anywhere;
+}
+#set-panel-apps .magpie-installed[data-state="error"]{color:var(--danger)}
+#set-panel-apps .magpie-block{
+  min-width:0;
+  margin:0;
+  padding-top:11px;
+  border-top:1px solid var(--settings-line,var(--border-soft));
+}
+#set-panel-apps .magpie-block+.magpie-block{margin-top:11px}
+#set-panel-apps .magpie-block h4{
+  margin:0 0 7px;
+  color:var(--text);
+  font-size:12px;
+  font-weight:600;
+  line-height:1.45;
+}
+#set-panel-apps .magpie-actions{display:flex;align-items:center;flex-wrap:wrap;gap:7px}
+#set-panel-apps .magpie-install-alternatives{flex:0 0 auto;min-width:0}
+#set-panel-apps .magpie-install-alternatives>summary{display:list-item;padding:5px 2px;color:var(--text-2);font-size:11.5px;line-height:1.4;cursor:pointer}
+#set-panel-apps .magpie-install-alternatives>summary:hover{color:var(--text)}
+#set-panel-apps .magpie-install-alternatives>summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+#set-panel-apps .magpie-install-alternative-actions{margin-top:5px}
+#set-panel-apps .magpie-field-note{
+  display:block;
+  margin:6px 0 0;
+  color:var(--settings-muted,var(--text-3));
+  font-size:11px;
+  line-height:1.5;
+  overflow-wrap:anywhere;
+}
+#set-panel-apps .magpie-services{
+  display:grid;
+  gap:0;
+  margin:0;
+  padding:0;
+  list-style:none;
+}
+#set-panel-apps .magpie-service{
+  min-width:0;
+  padding:7px 0;
+  border-top:1px solid var(--settings-line,var(--border-soft));
+}
+#set-panel-apps .magpie-service:first-child{border-top:0;padding-top:2px}
+#set-panel-apps .magpie-service-top{display:flex;align-items:baseline;justify-content:space-between;gap:12px;min-width:0}
+#set-panel-apps .magpie-service-name{min-width:0;color:var(--text-2);font-size:11.5px;font-weight:500;line-height:1.45;overflow-wrap:anywhere}
+#set-panel-apps .magpie-service-state{flex:0 0 auto;color:var(--settings-muted,var(--text-3));font-size:10.5px;font-weight:600;line-height:1.4}
+#set-panel-apps .magpie-service-state[data-state="active"]{color:var(--ok)}
+#set-panel-apps .magpie-service-state[data-state="failed"]{color:var(--danger)}
+#set-panel-apps .magpie-service-state[data-state="pending"],
+#set-panel-apps .magpie-service-state[data-state="starting"]{color:var(--text-2)}
+#set-panel-apps .magpie-missing{margin:3px 0 0;padding-left:17px;color:var(--settings-muted,var(--text-3));font-size:11px;line-height:1.45;overflow-wrap:anywhere}
+#set-panel-apps .magpie-missing li+li{margin-top:2px}
+#set-panel-apps .magpie-services-empty{padding:2px 0;color:var(--settings-muted,var(--text-3));font-size:11.5px;line-height:1.45}
+#set-panel-apps .magpie-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px 12px;margin-bottom:9px}
+#set-panel-apps .magpie-field{display:grid;align-content:start;gap:5px;min-width:0;color:var(--text-2);font-size:11.5px;font-weight:500;line-height:1.4}
+#set-panel-apps .magpie-field input,
+#set-panel-apps .magpie-field select{
+  display:block;
+  width:100%;
+  min-width:0;
+  min-height:31px;
+  padding:6px 8px;
+  border:1px solid var(--settings-line,var(--border-soft));
+  border-radius:6px;
+  background:var(--settings-control,var(--mac-control));
+  color:var(--text);
+  font:inherit;
+  font-size:12px;
+  line-height:1.4;
+}
+#set-panel-apps .magpie-field input::placeholder{color:var(--text-3);opacity:1}
+#set-panel-apps .magpie-field input:focus-visible,
+#set-panel-apps .magpie-field select:focus-visible,
+#set-panel-apps #magpie-interconnect-section button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#set-panel-apps .magpie-model-heading{justify-content:flex-start;align-items:baseline;flex-wrap:wrap}
+#set-panel-apps .magpie-model-heading h4{margin-bottom:7px}
+#set-panel-apps .magpie-model-fields{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:10px;min-width:0}
+#set-panel-apps .magpie-model-fields .magpie-field{min-width:0}
+#set-panel-apps .magpie-model-fields>.btn{margin-bottom:0}
+#set-panel-apps .magpie-model-heading .magpie-field-note{margin:0}
+#set-panel-apps .magpie-models select:disabled{opacity:.75}
+@media(max-width:680px){
+  #set-panel-apps #magpie-interconnect-section{padding:12px}
+}
+@media(max-width:520px){
+  #set-panel-apps .magpie-title-row{align-items:flex-start;flex-direction:column;gap:5px}
+  #set-panel-apps .magpie-status-wrap{width:100%;justify-content:flex-start}
+  #set-panel-apps .magpie-fields{grid-template-columns:minmax(0,1fr)}
+  #set-panel-apps .magpie-model-fields{grid-template-columns:minmax(0,1fr)}
+  #set-panel-apps .magpie-model-fields>.btn{justify-self:start}
+}
+@media(prefers-reduced-motion:reduce){#set-panel-apps #magpie-interconnect-section *{scroll-behavior:auto}}

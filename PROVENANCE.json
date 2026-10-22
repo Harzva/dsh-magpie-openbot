@@ -1,0 +1,18 @@
+{
+  "adapterSourceCommit": "997c252",
+  "openbotBaseCommit": "ee80c1b61476ea7571cdc30bd9696fa9d81a9b98",
+  "upstreamPlugin": {
+    "name": "@straydragon/dsh-x-magpie",
+    "version": "0.7.2",
+    "source": "https://github.com/StrayDragon/dsh-x-magpie/releases/tag/v0.7.2",
+    "sha256": "8f8b2c4ab1306c9789c5957e8b2b44a38950a15d2bb9b5e58189721616cc221e",
+    "license": "MIT",
+    "modified": false
+  },
+  "adaptations": [
+    "private runtime fingerprint helper extracted without algorithm changes",
+    "installer/manager import helper directly",
+    "portable tests use fixture config store; original DSH services remain real"
+  ],
+  "containsUserData": false
+}

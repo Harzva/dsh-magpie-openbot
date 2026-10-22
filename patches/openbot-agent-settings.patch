@@ -1,0 +1,162 @@
+diff --git a/docs/agent-settings.md b/docs/agent-settings.md
+index 1aab3d0..c208ef8 100644
+--- a/docs/agent-settings.md
++++ b/docs/agent-settings.md
+@@ -160,3 +160,22 @@ DSH format-1 索引通过 `settings_import` 识别后返回 `applied:false/requi
+ 实现入口：`src/agent-settings-tools.js`、`src/agent-settings-service.js`、`src/agent-settings-host.js`、`src/agent-settings-owner-actions.js`。实例模型和记忆边界见[工作空间 Bot 实例](workspace-bot-instances.md)。
+ 
+ 可先调用 `settings_describe({"domain":"targets"})` 分页发现当前实际可管理的 Bot 类、空间和实例标识，再读取目标配置与版本。每页最多五个目标，不包含私有记忆。
++
++## Magpie 统一模型网关
++
++人使用正式版现有的 **设置 → 应用连接 → DSH 插件与 Magpie**。Agent 通过同一拥有者处理器使用 `settings_action`，不另建配置库：
++
++| actionId | 参数 | 作用 |
++| --- | --- | --- |
++| `magpie.status` | `{}` | 读取插件/依赖/网关地址/目录，只有密钥存在标记 |
++| `magpie.install` | `{}` | 安装随App提供且摘要已固定的原版插件 |
++| `magpie.configure` | `{gatewayUrl?,apiKey?}` | 修改本机HTTP网关根地址或用户明确提供的网关密钥；至少一项 |
++| `magpie.enable` / `magpie.disable` | `{}` | 启停同步宿主服务 |
++| `magpie.sync` | `{}` | 读取网关目录并同步插件路由 |
++| `magpie.use-model` | `{modelId}` | 将已同步的精确模型保存为命名连接 |
++
++先用 `settings_describe({actionId:"magpie.configure"})` 获取结构。仅当前主脑可调用；除只读状态外均需要现有标准用户批准。队列等待后和落盘前重新核验实际身份/取消状态；只允许内置原版安装，Agent不能指定归档路径、源码、IPC或可执行文件。配置前先停用同步。密钥不进入设置返回、审计及批准文案。创建连接不改变默认模型或任何Bot，之后按现有 `settings_update` 绑定所需Bot的 `providerId/model`。
++
++Magpie管理其支持的账号、订阅、额度与路由组，OpenBot消费该网关暴露的模型。订阅授权、登录/续订与路由组编辑仍使用Magpie自己的界面或CLI；本设置不冒充这些接口已集成。没有自动读取其他应用登录，不宣称所有订阅均可转换为任意模型API。启停仅控制OpenBot的同步服务，不启动/退出Magpie或撤销已建立的模型连接。
++
++本增量源码验证使用原版插件、真实DSH服务和自有回环网关，不代表真实订阅账号通过；发布状态见 `magpie-agent-settings-verification.json`。
+diff --git a/main.js b/main.js
+index 5660673..eeed5ae 100644
+--- a/main.js
++++ b/main.js
+@@ -123,7 +123,7 @@ const { FeishuManager } = require('./src/feishu-manager');
+ const { MagpieManager } = require('./src/magpie-manager');
+ let magpieManager;
+ function magpieConnections() {
+-  if (!magpieManager) magpieManager = new MagpieManager({ home: app.getPath('userData'), config, assertOpen: assertExecutionOpen });
++  if (!magpieManager) magpieManager = new MagpieManager({ home: app.getPath('userData'), config, assertOpen: () => { assertExecutionOpen(); settingsCommitContext.assertCurrent(); } });
+   return magpieManager;
+ }
+ let feishuManager;
+diff --git a/src/agent-settings-approval.js b/src/agent-settings-approval.js
+index 304c63e..8678cb0 100644
+--- a/src/agent-settings-approval.js
++++ b/src/agent-settings-approval.js
+@@ -1,6 +1,9 @@
+ 'use strict';
+ 
+ const LABELS = Object.freeze({
++  'magpie.install': '安装内置原版Magpie插件', 'magpie.configure': '配置Magpie模型网关',
++  'magpie.enable': '启用Magpie同步服务', 'magpie.disable': '停用Magpie同步服务',
++  'magpie.sync': '同步Magpie模型路由', 'magpie.use-model': '创建Magpie模型连接',
+   'permissions.grant': '授予 Bot 能力', 'plugins.install': '安装插件', 'plugins.install.prepare': '安装已核验的插件包',
+   'shared.publish': '发布类共享知识与技能', 'shared.withdraw': '撤回类共享版本', 'shared.bind': '更新本实例的共享版本',
+   'plugins.configure': '启用或调整插件', 'connections.upsert': '保存模型连接', 'connections.select': '切换模型连接',
+@@ -26,7 +29,12 @@ function describeSettingsApproval(detail, { botName, spaceName } = {}) {
+   const packageName = detail.packageName || detail.package?.name, version = detail.version || detail.package?.version;
+   if (packageName) parts.push(short(packageName) + (version ? '@' + short(version) : ''));
+   if (detail.indexUrl) parts.push(short(detail.indexUrl));
+-  for (const key of ['name', 'baseUrl', 'profileId', 'planId', 'direction']) if (typeof args[key] === 'string') parts.push(short(args[key]));
++  for (const key of ['name', 'baseUrl', 'modelId', 'profileId', 'planId', 'direction']) if (typeof args[key] === 'string') parts.push(short(args[key]));
++  if (typeof args.gatewayUrl === 'string') {
++    let origin = '无效网关地址';
++    try { const u = new URL(args.gatewayUrl); if (u.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(u.hostname)) origin = u.origin; } catch (_) {}
++    parts.push(origin);
++  }
+   if (Array.isArray(detail.pluginIds) && detail.pluginIds.length) parts.push(detail.pluginIds.slice(0, 10).map(short).join('、'));
+   if (detail.action === 'shared.publish') {
+     parts.push('知识 ' + (detail.knowledge?.length || 0) + ' 项，技能 ' + (detail.skills?.length || 0) + ' 项');
+diff --git a/src/agent-settings-owner-actions.js b/src/agent-settings-owner-actions.js
+index 7e22018..f89b4b8 100644
+--- a/src/agent-settings-owner-actions.js
++++ b/src/agent-settings-owner-actions.js
+@@ -15,6 +15,7 @@ function fixedSet(values) {
+   return Object.freeze(set);
+ }
+ const OWNER_SETTING_CHANNELS = fixedSet([
++  'magpie:status', 'magpie:install', 'magpie:configure', 'magpie:enable', 'magpie:disable', 'magpie:sync', 'magpie:useModel',
+   'config:get', 'config:profile-upsert', 'config:profile-select', 'config:set', 'llm:test', 'llm:summarize',
+   'node:get', 'node:set', 'node:test', 'agents:list', 'agents:workspace-snapshot', 'agents:workspace-configure', 'agents:workspace-onboard',
+   'channel:status', 'channel:bind', 'channel:unbind', 'channel:access', 'channel:set-access',
+@@ -29,6 +30,9 @@ const UNSUPPORTED = Object.freeze({
+   'state.reset': '重置私有资料没有 Agent 可逆事务，未开放。'
+ });
+ const CHANNELS = Object.freeze({
++  'magpie.status': ['magpie:status'], 'magpie.install': ['magpie:install'],
++  'magpie.configure': ['magpie:configure'], 'magpie.enable': ['magpie:enable'],
++  'magpie.disable': ['magpie:disable'], 'magpie.sync': ['magpie:sync'], 'magpie.use-model': ['magpie:useModel'],
+   'connections.list': ['config:get'], 'connections.upsert': ['config:profile-upsert'],
+   'connections.select': ['config:profile-select'], 'connections.test': ['llm:test'],
+   'connections.models': ['llm:test'], 'connections.summary-model': ['config:set'],
+@@ -59,6 +63,11 @@ const filenameArg = () => stringArg('文件名，不接受绝对路径、目录
+ const entryChoice = { anyOf: [{ required: ['id'] }, { required: ['name'] }] };
+ const fileEntry = () => ({ botId: botArg(), id: stringArg('Bot 文件目录中的条目标识。', 80), name: filenameArg() });
+ const OWNER_ACTION_ARGUMENTS = Object.freeze({
++  'magpie.status': argumentShape(),
++  'magpie.install': argumentShape(),
++  'magpie.configure': argumentShape({ gatewayUrl: stringArg('本机HTTP网关根地址，例如http://127.0.0.1:3425；不能包含路径或凭据。', 2048), apiKey: stringArg('用户明确提供的Magpie网关密钥；不读取或返回订阅登录。', 16384) }, [], { minProperties: 1 }),
++  'magpie.enable': argumentShape(), 'magpie.disable': argumentShape(), 'magpie.sync': argumentShape(),
++  'magpie.use-model': argumentShape({ modelId: stringArg('已同步的精确模型ID；仅创建连接，不切换其他BOT。', 160) }, ['modelId']),
+   'connections.list': argumentShape(),
+   'connections.upsert': argumentShape({ id: { ...stringArg('新建或更新的连接 ID。', 64), pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$' },
+     name: stringArg('连接显示名称。', 80), baseUrl: stringArg('HTTP(S) API 地址，不能含凭据、查询参数或片段。', 2048),
+@@ -313,6 +322,21 @@ function createOwnerSettingsActions({ invoke, getState, commitState, config, sto
+     guard(ctx);
+     // Top-level key sets are checked independently for every reviewed intent.
+     switch (actionId) {
++      case 'magpie.status': plain(args, []); return call('magpie:status', [], ctx);
++      case 'magpie.install': plain(args, []); return call('magpie:install', [{ kind: 'bundled' }], ctx, true);
++      case 'magpie.enable': case 'magpie.disable': case 'magpie.sync':
++        plain(args, []); return call('magpie:' + actionId.split('.')[1], [], ctx, true);
++      case 'magpie.configure': {
++        plain(args, ['gatewayUrl', 'apiKey']);
++        if (!Object.keys(args).length) fail('SETTINGS_INVALID', '请指定要修改的网关配置。');
++        if (args.gatewayUrl !== undefined) {
++          url(args.gatewayUrl); const u = new URL(args.gatewayUrl);
++          if (u.protocol !== 'http:' || !['127.0.0.1', 'localhost', '[::1]'].includes(u.hostname) || u.pathname !== '/') fail('SETTINGS_INVALID', '仅支持本机HTTP网关根地址。');
++        }
++        if (args.apiKey !== undefined) text(args.apiKey, 16384, '网关密钥', true);
++        return call('magpie:configure', [{ ...args }], ctx, true);
++      }
++      case 'magpie.use-model': plain(args, ['modelId'], ['modelId']); text(args.modelId, 160, '模型ID'); return call('magpie:useModel', [{ ...args }], ctx, true);
+       case 'connections.list': plain(args, []); return call('config:get', [], ctx);
+       case 'connections.upsert': {
+         plain(args, ['id', 'name', 'baseUrl', 'apiKey', 'model', 'clearKey'], ['id']); connectionId(args.id);
+diff --git a/src/agent-settings-service.js b/src/agent-settings-service.js
+index 451c837..8c79391 100644
+--- a/src/agent-settings-service.js
++++ b/src/agent-settings-service.js
+@@ -49,6 +49,9 @@ const entries = [
+ // These are reviewed UI intents, not IPC channel names. The host exposes only
+ // the intents it can actually execute, with the existing lifecycle guards.
+ const ownerEntries = [
++  ['magpie.status', 'connections', false], ['magpie.install', 'connections', true],
++  ['magpie.configure', 'connections', true], ['magpie.enable', 'connections', true],
++  ['magpie.disable', 'connections', true], ['magpie.sync', 'connections', true], ['magpie.use-model', 'connections', true],
+   ['connections.list', 'connections', false], ['connections.upsert', 'connections', true],
+   ['connections.select', 'connections', true], ['connections.test', 'connections', false],
+   ['connections.models', 'connections', false], ['connections.summary-model', 'connections', true],
+diff --git a/src/magpie-manager.js b/src/magpie-manager.js
+index 76ece8d..d9850aa 100644
+--- a/src/magpie-manager.js
++++ b/src/magpie-manager.js
+@@ -20,16 +20,16 @@ class MagpieManager {
+  }
+  ready(){this.assertOpen();if(this.closed)fail('MAGPIE_CLOSED','插件管理器已关闭。');if(this.storageError)fail('MAGPIE_STORAGE','插件配置无法安全读取，请检查本机数据目录。');}
+  serial(fn){this.pending++;const task=this.queue.then(()=>{this.ready();return fn();}).finally(()=>this.pending--);this.queue=task.catch(()=>{});return task;}
+- persist(next){privateDir(this.home);writeJson(this.file,next);this.data=next;}
++ persist(next){this.ready();privateDir(this.home);writeJson(this.file,next);this.data=next;}
+  status(){const i=this.data.installed;return {ok:!this.storageError,status:{installed:i?{name:i.packageName,version:i.version,verifiedOriginal:i.bundleSha256===VERIFIED_BUNDLE,requiredServices:i.requiredServices||[],requiredServicesEvidence:i.requiredServicesEvidence,runtimeDependenciesStatus:i.runtimeDependenciesStatus,sourceSha256:i.sourceSha256}:null,enabled:!!this.run,state:this.state,message:this.storageError?'插件配置无法安全读取。':this.message,services:this.services,models:this.models,gatewayUrl:this.data.gatewayUrl,hasKey:!!this.data.apiKey}};}
+  refresh(){return this.serial(async()=>{if(this.run){try{const live=await this.request('/openbot/status');this.services=live.services;const plugin=live.services.find(x=>x.name==='dsh-x-magpie');this.state=plugin?.state==='active'?'active':'pending';}catch{await this.stop();this.state='failed';this.message='插件服务已停止，请重新启用。';}}return this.status();});}
+  isBusy(){return this.pending>0;}
+  install({sourcePath}){return this.serial(async()=>{if(this.run)fail('MAGPIE_RUNNING','请先停用插件再安装。');privateDir(this.home);const receipt=await installLocalDshBundle({sourcePath,storeRoot:path.join(this.home,'bundles')});this.persist({...this.data,installed:receipt});this.models=[];this.services=(receipt.requiredServices||[]).map(name=>({name,state:'pending',missing:[name]}));this.state='stopped';this.message=receipt.packageName===PLUGIN?'已安装，启用后检查实际依赖状态。':'已安装到本机插件目录；此插件尚未配置宿主服务，未执行。';return this.status();});}
+  configure(input){return this.serial(async()=>{fields(input,['gatewayUrl','apiKey']);if(this.run)fail('MAGPIE_RUNNING','请先停用连接再修改配置。');const url=gateway(input.gatewayUrl||this.data.gatewayUrl);if(input.apiKey!==undefined&&(typeof input.apiKey!=='string'||input.apiKey.length>16384||/[\r\n\0]/.test(input.apiKey)))fail('MAGPIE_KEY','网关密钥格式无效。');this.persist({...this.data,gatewayUrl:url,apiKey:input.apiKey===undefined?this.data.apiKey:input.apiKey.trim()});this.models=[];return this.status();});}
+- async request(url,body){const run=this.run;if(!run)fail('MAGPIE_STOPPED','请先启用连接。');return new Promise((resolve,reject)=>{const req=http.request({socketPath:run.socketPath,path:url,method:body?'POST':'GET',headers:{authorization:'Bearer '+run.token,'content-type':'application/json'}},res=>{let text='';res.on('data',b=>{text+=b;if(text.length>1024*1024)req.destroy(Error('oversize'));});res.on('end',()=>{try{const value=JSON.parse(text);if(res.statusCode!==200||value.error)fail('MAGPIE_REQUEST','插件操作未成功，请检查网关连接和密钥。');resolve(value);}catch(e){reject(e);}});});req.setTimeout(15000,()=>req.destroy(Error('timeout')));req.on('error',()=>reject(Object.assign(new Error('插件服务暂不可用。'),{code:'MAGPIE_REQUEST'})));req.end(body?JSON.stringify(body):undefined);});}
++ async request(url,body){this.ready();const run=this.run;if(!run)fail('MAGPIE_STOPPED','请先启用连接。');return new Promise((resolve,reject)=>{const req=http.request({socketPath:run.socketPath,path:url,method:body?'POST':'GET',headers:{authorization:'Bearer '+run.token,'content-type':'application/json'}},res=>{let text='';res.on('data',b=>{text+=b;if(text.length>1024*1024)req.destroy(Error('oversize'));});res.on('end',()=>{try{const value=JSON.parse(text);if(res.statusCode!==200||value.error)fail('MAGPIE_REQUEST','插件操作未成功，请检查网关连接和密钥。');resolve(value);}catch(e){reject(e);}});});req.setTimeout(15000,()=>req.destroy(Error('timeout')));req.on('error',()=>reject(Object.assign(new Error('插件服务暂不可用。'),{code:'MAGPIE_REQUEST'})));req.end(body?JSON.stringify(body):undefined);});}
+  enable(){return this.serial(async()=>{if(this.run)return this.status();const installed=this.data.installed;if(!installed)fail('MAGPIE_NOT_INSTALLED','请先导入 DSH 插件。');if(installed.packageName!==PLUGIN||installed.version!=='0.7.2')fail('MAGPIE_UNSUPPORTED','已保存此插件；当前应用连接仅验收 Magpie 插件 0.7.2。');
+   this.state='starting';this.message='';
+-  try{await this.start();const status=await this.request('/openbot/status');this.services=status.services;const plugin=this.services.find(x=>x.name==='dsh-x-magpie');if(!plugin||plugin.state!=='active'){this.state='pending';this.message='插件正在等待宿主服务。';await this.stop();return this.status();}
++  try{await this.start();this.ready();const status=await this.request('/openbot/status');this.services=status.services;const plugin=this.services.find(x=>x.name==='dsh-x-magpie');if(!plugin||plugin.state!=='active'){this.state='pending';this.message='插件正在等待宿主服务。';await this.stop();return this.status();}
+    await this.request('/dsh-x-magpie/key',{value:this.data.apiKey||'magpie'});this.state='active';this.message='插件与宿主服务已启用；可以刷新模型。';return this.status();
+   }catch(e){await this.stop();this.state='failed';this.message='插件启动失败，请检查依赖和本机配置。';throw e;}
+  });}

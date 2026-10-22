@@ -1,0 +1,115 @@
+# DSH × Magpie — OpenBot host adapter
+
+[English](#english) · MIT
+
+把 **原版 [dsh-x-magpie](https://github.com/StrayDragon/dsh-x-magpie)** 接入 OpenBot 桌面宿主：本机安装、依赖状态、同步启停、模型连接，以及人与 Agent 共用的配置操作。
+
+这份仓库发布的是 OpenBot 适配代码。DSH 插件本体由 StrayDragon 维护，随仓库保留的 `0.7.2` 发布包未修改；[Magpie](https://github.com/yetone/magpie) 是独立运行的模型网关。
+
+## 分工
+
+`订阅/API账号 → Magpie网关 → 原版DSH同步插件 → OpenBot命名模型连接 → BOT`
+
+- Magpie 管理其支持的供应商、订阅、账号、额度与路由组。
+- 插件通过 `configEditor / credentials / llm-pi-ai` 同步模型路由。
+- 本适配使用真实 DSH Loader/SDK 与服务；只对 `webServer.register` 契约提供桌面 carrier。控制传输为带随机令牌的私有 Unix socket，无新增 TCP 控制端口。
+- OpenBot 提供人可点击的设置页；Agent 走同一个宿主处理器与存储，身份、批准与提交前复核由宿主负责。
+
+本仓库不是新的独立 DSH bundle，也不替代原版插件。直接使用 DSH Web 的用户请按[上游安装说明](https://github.com/StrayDragon/dsh-x-magpie#安装)安装原版插件；无需本桌面适配。
+
+## 安装与测试本适配
+
+需要 Node.js 22.12+、npm；当前控制传输需 Unix socket（macOS/Linux）。
+
+```sh
+git clone https://github.com/Harzva/dsh-magpie-openbot.git
+cd dsh-magpie-openbot
+npm ci --ignore-scripts --no-audit --no-fund
+npm test
+```
+
+所有依赖来自公开 npm，未依赖私有 OpenBot 仓库。`private:true` 只防止意外发到 npm，不影响本仓库 MIT 开源。
+
+测试使用临时目录、原版插件、真实 DSH 服务和受控的本机模型目录网关；不读取你的订阅登录，不使用付费模型，不访问真实 OpenBot 资料。
+
+## 接入自己的桌面宿主
+
+```js
+const { MagpieManager } = require('./src/magpie-manager');
+const manager = new MagpieManager({
+  home: '/absolute/private/application-data',
+  config: hostModelConnections,
+  assertOpen() {
+    hostAssertNotClosing();
+    hostAssertCurrentSettingsAuthority();
+  }
+});
+```
+
+`home` 使用宿主自己的专用资料目录。`config.upsertProfile({id,name,baseUrl,apiKey,model})` 必须保存命名连接并返回 `{ok:true}` 或 `{ok:false,code,message}`；连接ID由manager生成。真实凭据只交给本机存储，不返回到renderer/Agent。
+
+宿主在人或 Agent 调用前完成身份及批准校验，再调用：
+
+```js
+await manager.install({sourcePath: require('node:path').resolve('vendor/dsh-x-magpie-0.7.2.tgz')});
+await manager.configure({gatewayUrl:'http://127.0.0.1:3425', apiKey:'USER_SUPPLIED_GATEWAY_KEY'});
+await manager.enable();
+await manager.sync();
+const status = await manager.refresh();
+// 从status.status.models选择精确ID，再执行：
+// await manager.useModel({modelId:'provider/model'});
+await manager.disable();
+await manager.close();
+```
+
+先在 Magpie 中登录或添加供应商并启动其网关。默认网关密钥是 `magpie`；自定义密钥由用户提供。修改网关配置前先停用同步。关闭同步只停止本适配的服务，已创建模型连接仍直接访问 Magpie。宿主重启后不自动启用。
+
+### 人可点击
+
+`renderer/openbot-magpie.js/.css` 是 OpenBot 的既有组件源码参考。它依赖宿主页 DOM、国际化、样式和受控 preload；不是可直接双击打开的独立网页。设置页入口为「设置 → 应用连接 → DSH 插件与 Magpie」。
+
+宿主仅向可信拥有者窗口暴露下列固定调用：
+
+| preload方法 | IPC意图 | manager方法 |
+| --- | --- | --- |
+| `magpieStatus` | `magpie:status` | `refresh()` |
+| `magpieInstall` | `magpie:install` | `install({sourcePath})`，路径由宿主内置包或用户文件选择器确定 |
+| `magpieConfigure` | `magpie:configure` | `configure(input)` |
+| `magpieEnable/Disable` | `magpie:enable/disable` | `enable()/disable()` |
+| `magpieSync` | `magpie:sync` | `sync()` |
+| `magpieUseModel` | `magpie:useModel` | `useModel({modelId})` |
+
+### Agent 也可以设置
+
+`patches/openbot-agent-settings.patch` 是基于 OpenBot `ee80c1b` 的有限宿主增量，包含已验的7个设置意图及异步提交授权接线。它需要 OpenBot 已有设置服务，并非通用Agent运行时；其他宿主可按下表复用同一manager。
+
+| `settings_action.actionId` | args | 权限 |
+| --- | --- | --- |
+| `magpie.status` | `{}` | 当前主脑，只读 |
+| `magpie.install` | `{}` | 主脑 + 用户批准，只装内置固定原版 |
+| `magpie.configure` | `{gatewayUrl?,apiKey?}`，至少一项 | 主脑 + 用户批准 |
+| `magpie.enable/disable/sync` | `{}` | 主脑 + 用户批准 |
+| `magpie.use-model` | `{modelId}` | 主脑 + 用户批准 |
+
+先调用 `settings_describe({actionId:'magpie.configure'})` 读取参数结构。Agent不能指定插件路径、任意IPC、可执行文件或账号文件。队列执行、落盘与控制请求前核验实际身份/取消信号。批准和审计不返回密钥；不能靠提示词自授予主脑权限。创建连接不会切换默认模型或改动其他BOT。
+
+## 范围与验证
+
+仅允许启用内容摘要匹配的原版 `@straydragon/dsh-x-magpie@0.7.2`。其他导入包只保存，不执行；不运行npm安装脚本，不自动补插件依赖。网关地址仅支持loopback HTTP根地址。目录隔离不等于操作系统沙箱。
+
+公开包测试验证原插件与真实DSH服务、模型目录同步、连接创建、密钥投影、鉴权、停止/重启、内容篡改与归档边界。真实供应商订阅、所有路由模式、Windows、独立网页UI和完整App安装不属于本仓库测试声明。Agent补丁在OpenBot来源树通过54专项和49运行时回归及完整npm，公开仓库自身不重复冒称这些为独立包测试。
+
+订阅登录/续订与Magpie路由组编辑仍在Magpie自己的UI/CLI完成；本适配没有这些管理API。当前OpenBot发布版本是否包含最新Agent补丁，需以该App构建为准。
+
+## 来源与许可
+
+- OpenBot适配与bundle fingerprint辅助函数：MIT，OpenBot contributors；来源提交及提取变更见 `PROVENANCE.json`。
+- StrayDragon/dsh-x-magpie：MIT，保留原始tgz、许可及SHA256。见 `vendor/dsh-x-magpie-LICENSE.txt` 和 provenance。
+- yetone/magpie：上游独立项目，本仓库不复制其程序或账号配置。
+- DeepSeek Harness：直接使用公开的 `@deepseek-ai/*` 包，依赖版本由lockfile固定，许可见各上游包。
+
+## English
+
+This repository is the MIT-licensed **OpenBot desktop host adapter** for the unmodified upstream DSH Magpie plugin. Magpie manages supported accounts and routing; the upstream plugin synchronizes its model catalog; the adapter supplies desktop service transport and host settings integration.
+
+Run `npm ci --ignore-scripts && npm test` on Node.js 22.12+ and macOS/Linux. The tests run the original plugin and real DSH services against a controlled local gateway, without accessing personal logins or paid providers. There is no private OpenBot package dependency. The renderer is host integration source, not a standalone web app. The Agent patch requires OpenBot's existing authorization/settings service. Upstream authorship and MIT notices are retained.
